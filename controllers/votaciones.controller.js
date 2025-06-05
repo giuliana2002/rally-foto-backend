@@ -1,51 +1,79 @@
-const db = require('../models/db');
+const Votacion = require('../models/Votacion');
 
-// Registrar una votación
-exports.votar = async (req, res) => {
+
+const votar = async (req, res) => {
   try {
-    const { fotografia_id, ip_usuario, calidad_tecnica, creatividad, composicion, comentario } = req.body;
+    const { fotografia_id } = req.body;
+    const ip = req.ip;
 
-    // Puedes añadir lógica para limitar una IP a 1 voto por foto
-    const [yaVoto] = await db.execute(
-      'SELECT * FROM votaciones WHERE fotografia_id = ? AND ip_usuario = ?',
-      [fotografia_id, ip_usuario]
-    );
+    const exito = await Votacion.registrar(fotografia_id, ip);
+    if (!exito) return res.status(403).json({ mensaje: 'Ya has votado por esta fotografía' });
 
-    if (yaVoto.length > 0) {
-      return res.status(400).json({ error: 'Ya has votado esta fotografía desde esta IP.' });
-    }
-
-    await db.execute(
-      `INSERT INTO votaciones 
-       (fotografia_id, ip_usuario, calidad_tecnica, creatividad, composicion, comentario)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [fotografia_id, ip_usuario, calidad_tecnica, creatividad, composicion, comentario]
-    );
-
-    res.status(201).json({ mensaje: 'Votación registrada con éxito' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.json({ mensaje: 'Voto registrado' });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al registrar voto', error: err.message });
   }
 };
 
-// Obtener promedios por foto
-exports.promediosPorFoto = async (req, res) => {
+const ranking = async (req, res) => {
   try {
-    const { fotoId } = req.params;
+    const { rally_id } = req.query;
+    if (!rally_id) return res.status(400).json({ mensaje: 'Falta rally_id' });
 
-    const [resultados] = await db.execute(
-      `SELECT 
-         AVG(calidad_tecnica) AS calidad_promedio,
-         AVG(creatividad) AS creatividad_promedio,
-         AVG(composicion) AS composicion_promedio,
-         COUNT(*) AS total_votos
-       FROM votaciones
-       WHERE fotografia_id = ?`,
-      [fotoId]
-    );
-
-    res.json(resultados[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    const votos = await Votacion.contarVotosPorRally(rally_id);
+    res.json(votos);
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al obtener ranking', error: err.message });
   }
+};
+// Total de votos por foto
+const obtenerVotosPorFoto = async (req, res) => {
+  const { foto_id } = req.params;
+  try {
+    const [rows] = await db.execute(
+      'SELECT COUNT(*) AS votos FROM votaciones WHERE fotografia_id = ?',
+      [foto_id]
+    );
+    res.json({ votos: rows[0].votos });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al obtener votos' });
+  }
+};
+
+// Verificar si esta IP ya votó
+const verificarVotoPorIP = async (req, res) => {
+  const { foto_id } = req.params;
+  const ip = req.ipUsuario;
+  try {
+    const [rows] = await db.execute(
+      'SELECT id FROM votaciones WHERE fotografia_id = ? AND ip = ?',
+      [foto_id, ip]
+    );
+    res.json({ haVotado: rows.length > 0 });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al verificar voto' });
+  }
+};
+
+// Eliminar el voto de esta IP
+const eliminarVotoPorIP = async (req, res) => {
+  const { foto_id } = req.params;
+  const ip = req.ipUsuario;
+  try {
+    await db.execute(
+      'DELETE FROM votaciones WHERE fotografia_id = ? AND ip = ?',
+      [foto_id, ip]
+    );
+    res.json({ mensaje: 'Voto eliminado con éxito' });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al eliminar el voto' });
+  }
+};
+
+module.exports = {
+  votar,
+  ranking,
+  obtenerVotosPorFoto,
+  verificarVotoPorIP,
+  eliminarVotoPorIP
 };

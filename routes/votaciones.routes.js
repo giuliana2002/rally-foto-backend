@@ -2,13 +2,18 @@ const express = require('express');
 const router = express.Router();
 const {
   votar,
-  promediosPorFoto
+  ranking,
+  obtenerVotosPorFoto,
+  verificarVotoPorIP,
+  eliminarVotoPorIP
 } = require('../controllers/votaciones.controller');
 
-// Votar por una foto
-router.post('/', votar);
+const { obtenerIP } = require('../middleware/ip.middleware');
 
-// Obtener promedios por ID de foto
-router.get('/promedios/:fotoId', promediosPorFoto);
+router.post('/', obtenerIP, votar);
+router.get('/ranking', ranking);
+router.get('/:foto_id', obtenerVotosPorFoto); 
+router.get('/mis-votos/:foto_id', obtenerIP, verificarVotoPorIP); 
+router.delete('/:foto_id', obtenerIP, eliminarVotoPorIP); 
 
 module.exports = router;

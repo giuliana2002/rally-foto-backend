@@ -1,48 +1,86 @@
-const db = require('../models/db');
+const Fotografia = require('../models/Fotografia');
+const cloudinary = require('../utils/cloudinary');
+const fs = require('fs');
 
-// Subir una nueva fotografía
-exports.subirFoto = async (req, res) => {
+const subirFotografia = async (req, res) => {
   try {
-    const { usuario_id, titulo, descripcion, url } = req.body;
+    const { titulo, descripcion, rally_id } = req.body;
+    const archivo = req.file;
+    if (!archivo || !rally_id) return res.status(400).json({ mensaje: 'Falta imagen o rally_id' });
 
-    const [result] = await db.execute(
-      'INSERT INTO fotografias (usuario_id, titulo, descripcion, url) VALUES (?, ?, ?, ?)',
-      [usuario_id, titulo, descripcion, url]
-    );
+    const resultado = await cloudinary.uploader.upload(archivo.path);
+    const id = await Fotografia.crear({
+      usuario_id: req.usuario.id,
+      url: resultado.secure_url,
+      titulo,
+      descripcion,
+      rally_id
+    });
 
-    res.status(201).json({ mensaje: 'Foto subida con éxito', id: result.insertId });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    fs.unlinkSync(archivo.path);
+    res.status(201).json({ id });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al subir la fotografía', error: err.message });
   }
 };
 
-// Obtener todas las fotos admitidas (galería pública)
-exports.obtenerGaleria = async (req, res) => {
+const obtenerPublicas = async (req, res) => {
   try {
-    const [fotos] = await db.execute(
-      "SELECT * FROM fotografias WHERE estado = 'admitida' ORDER BY created_at DESC"
-    );
-
+    const { rally_id } = req.query;
+    if (!rally_id) return res.status(400).json({ mensaje: 'Falta rally_id' });
+    const fotos = await Fotografia.obtenerPorEstadoYRally('admitida', rally_id);
     res.json(fotos);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al obtener galería', error: err.message });
   }
 };
 
-// Cambiar estado (admin)
-exports.actualizarEstadoFoto = async (req, res) => {
+const obtenerMisFotos = async (req, res) => {
+  try {
+    const fotos = await Fotografia.obtenerPorUsuario(req.usuario.id);
+    res.json(fotos);
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al obtener tus fotografías', error: err.message });
+  }
+};
+
+const validarFoto = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
-
-    await db.execute(
-      "UPDATE fotografias SET estado = ? WHERE id = ?",
-      [estado, id]
-    );
-
+    await Fotografia.actualizarEstado(id, estado);
     res.json({ mensaje: 'Estado actualizado' });
-  } catch (error) {
-    res.status(500).json({ error: error.message
-    });
-    }
-}
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al validar fotografía', error: err.message });
+  }
+};
+
+const eliminarFoto = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await Fotografia.eliminar(id);
+    res.json({ mensaje: 'Fotografía eliminada' });
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al eliminar fotografía', error: err.message });
+  }
+};
+
+const obtenerPendientes = async (req, res) => {
+  try {
+    const fotos = await Fotografia.obtenerPorEstado('pendiente');
+    console.log('Fotos pendientes encontradas:', fotos);
+    res.json(fotos);
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al obtener fotos pendientes', error: err.message });
+  }
+};
+
+
+module.exports = {
+  subirFotografia,
+  obtenerPublicas,
+  obtenerMisFotos,
+  validarFoto,
+  eliminarFoto,
+  obtenerPendientes
+};
